@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Flappy Puppy</title>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background: #2c3e50;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            font-family: 'Segoe UI', Arial, sans-serif;
+            touch-action: none;
+        }
+        .game-container {
+            position: relative;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            border-radius: 8px;
+            overflow: hidden;
+        }
+        canvas {
+            display: block;
+            background: #4dc1f9;
+            cursor: pointer;
+            border-radius: 8px;
+        }
+        .game-over-message {
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            transform: translate(-50%, -50%);
+            color: white;
+            font-size: 2rem;
+            font-weight: bold;
+            text-shadow: 2px 2px 4px black;
+            display: none;
+            pointer-events: none;
+            white-space: nowrap;
+        }
+    </style>
+</head>
+<body>
+    <div class="game-container">
+        <canvas id="gameCanvas" width="400" height="600"></canvas>
+        <div class="game-over-message" id="gameOverMsg">Game Over</div>
+    </div>
+
+    <script>
+        (function() {
+            const canvas = document.getElementById('gameCanvas');
+            const ctx = canvas.getContext('2d');
+            const gameOverMsg = document.getElementById('gameOverMsg');
+
+            const W = canvas.width;
+            const H = canvas.height;
+
+            // Puppy settings
+            const puppyX = 80;
+            const puppyRadius = 14; // collision circle
+            const gravity = 0.5;
+            const jumpPower = -7.5;
+
+            // Pipe settings
+            const pipeWidth = 52;
+            const pipeGap = 135;
+            const pipeSpeed = 2.5;
+            const pipeSpawnInterval = 90;
+
+            // Ground
+            const groundHeight = 80;
+            const groundY = H - groundHeight;
+
+            let puppyY, puppyVelocity;
+            let pipes, frameCount, score, highScore;
+            let gameState;
+
+            highScore = localStorage.getItem('flappyHighScore') || 0;
+
+            function resetGame() {
+                puppyY = H / 2 - 30;
+                puppyVelocity = 0;
+                pipes = [];
+                frameCount = 0;
+                score = 0;
+                gameState = 'start';
+                gameOverMsg.style.display = 'none';
+            }
+
+            function jump() {
+                if (gameState === 'over') {
+                    resetGame();
+                    gameState = 'playing';
+                } else if (gameState === 'start') {
+                    gameState = 'playing';
+                    puppyVelocity = jumpPower;
+                } else if (gameState === 'playing') {
+                    puppyVelocity = jumpPower;
+                }
+            }
+
+            canvas.addEventListener('click', jump);
+            document.addEventListener('keydown', (e) => {
+                if (e.code === 'Space' || e.code === 'ArrowUp' || e.code === 'KeyW') {
+                    e.preventDefault();
+                    jump();
+                }
+            });
+            canvas.addEventListener('touchstart', (e) => {
+                e.preventDefault();
+                jump();
+            });
+
+            function update() {
+                if (gameState !== 'playing') return;
+                puppyVelocity += gravity;
+                puppyY += puppyVelocity;
+
+                if (puppyY + puppyRadius >= groundY || puppyY - puppyRadius <= 0) {
+                    gameOver();
+                    return;
+                }
+
+                if (frameCount % pipeSpawnInterval === 0) {
+                    const gapY = 100 + Math.random() * (groundY - pipeGap - 150);
+                    pipes.push({ x: W, gapY: gapY, scored: false });
+                }
+
+                for (let i = pipes.length - 1; i >= 0; i--) {
+                    pipes[i].x -= pipeSpeed;
+                    const pipe = pipes[i];
+                    const pipeRight = pipe.x + pipeWidth;
+                    const pipeLeft = pipe.x;
+                    const puppyRight = puppyX + puppyRadius;
+                    const puppyLeft = puppyX - puppyRadius;
+
+                    if (puppyRight > pipeLeft && puppyLeft < pipeRight) {
+                        const gapTop = pipe.gapY;
+                        const gapBottom = pipe.gapY + pipeGap;
+                        if (puppyY - puppyRadius < gapTop || puppyY + puppyRadius > gapBottom) {
+                            gameOver();
+                            return;
+                        }
+                    }
+
+                    if (!pipe.scored && pipe.x + pipeWidth < puppyX) {
+                        pipe.scored = true;
+                        score++;
+                    }
+
+                    if (pipe.x + pipeWidth < 0) {
+                        pipes.splice(i, 1);
+                    }
+                }
+
+                frameCount++;
+            }
+
+            function gameOver() {
+                gameState = 'over';
+                gameOverMsg.style.display = 'block';
+                if (score > highScore) {
+                    highScore = score;
+                    localStorage.setItem('flappyHighScore', highScore);
+                }
+            }
+
+            function draw() {
+                ctx.clearRect(0, 0, W, H);
+
+                // Clouds
+                ctx.fillStyle = 'rgba(255,255,255,0.2)';
+                drawCloud(50, 60, 40);
+                drawCloud(280, 80, 50);
+                drawCloud(150, 200, 35);
+
+                // Pipes
+                ctx.fillStyle = '#2ecc71';
+                ctx.shadowColor = 'rgba(0,0,0,0.2)';
+                ctx.shadowBlur = 5;
+                pipes.forEach(pipe => {
+                    ctx.fillRect(pipe.x, 0, pipeWidth, pipe.gapY);
+                    ctx.fillRect(pipe.x, pipe.gapY + pipeGap, pipeWidth, groundY - (pipe.gapY + pipeGap));
+                    const capWidth = pipeWidth + 6;
+                    ctx.fillStyle = '#27ae60';
+                    ctx.fillRect(pipe.x - 3, pipe.gapY - 5, capWidth, 10);
+                    ctx.fillRect(pipe.x - 3, pipe.gapY + pipeGap - 5, capWidth, 10);
+                    ctx.fillStyle = '#2ecc71';
+                });
+                ctx.shadowBlur = 0;
+
+                // Ground
+                ctx.fillStyle = '#8B5E3C';
+                ctx.fillRect(0, groundY, W, groundHeight);
+                ctx.fillStyle = '#6b3a2a';
+                ctx.fillRect(0, groundY, W, 5);
+
+                // --- Puppy drawing ---
+                ctx.save();
+                const angle = Math.min(Math.max(puppyVelocity * 0.05, -0.5), 0.8);
+                ctx.translate(puppyX, puppyY);
+                ctx.rotate(angle);
+
+                const capeFlutter = Math.sin(frameCount * 0.2) * 2.5;
+
+                // Red cape (behind body)
+                ctx.fillStyle = '#c0392b';
+                ctx.beginPath();
+                ctx.moveTo(2, -8);   // near neck
+                ctx.lineTo(8, -3);
+                ctx.lineTo(-10 - capeFlutter, 8);
+                ctx.lineTo(-12 - capeFlutter, 0);
+                ctx.closePath();
+                ctx.fill();
+                // Cape darker shade
+                ctx.fillStyle = '#a93226';
+                ctx.beginPath();
+                ctx.moveTo(8, -3);
+                ctx.lineTo(-10 - capeFlutter, 8);
+                ctx.lineTo(-7 - capeFlutter, 9);
+                ctx.lineTo(10, -2);
+                ctx.closePath();
+                ctx.fill();
+
+                // Tail (wagging slightly)
+                const tailWag = Math.sin(frameCount * 0.25) * 1.5;
+                ctx.fillStyle = '#8B4513';
+                ctx.beginPath();
+                ctx.moveTo(-14, -1);
+                ctx.lineTo(-20 + tailWag, -7);
+                ctx.lineTo(-17 + tailWag, 1);
+                ctx.closePath();
+                ctx.fill();
+
+                // Back legs
+                ctx.fillStyle = '#6b3410';
+                ctx.fillRect(-9, 5, 5, 10);
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(-10, 12, 7, 6); // paw
+                // Front legs
+                ctx.fillStyle = '#6b3410';
+                ctx.fillRect(5, 5, 5, 10);
+                ctx.fillStyle = '#8B4513';
+                ctx.fillRect(4, 12, 7, 6);
+
+                // Body (main torso)
+                ctx.fillStyle = '#8B4513';
+                ctx.beginPath();
+                ctx.ellipse(0, 1, 14, 9, 0, 0, Math.PI * 2);
+                ctx.fill();
+                // Belly highlight
+                ctx.fillStyle = '#A0522D';
+                ctx.beginPath();
+                ctx.ellipse(1, 3, 10, 6, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Head (base)
+                ctx.fillStyle = '#8B4513';
+                ctx.beginPath();
+                ctx.arc(12, -4, 7.5, 0, Math.PI * 2);
+                ctx.fill();
+                // Lighter snout area
+                ctx.fillStyle = '#A0522D';
+                ctx.beginPath();
+                ctx.ellipse(16, -2, 5, 4.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+                // Snout rounded rectangle
+                ctx.fillStyle = '#c68e5c';
+                ctx.beginPath();
+                ctx.ellipse(17, -1.5, 4.5, 3.5, 0, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Nose
+                ctx.fillStyle = '#1a1a1a';
+                ctx.beginPath();
+                ctx.ellipse(19.5, -2.5, 2, 1.5, 0.1, 0, Math.PI * 2);
+                ctx.fill();
+                // Nose shine
+                ctx.fillStyle = '#444';
+                ctx.beginPath();
+                ctx.arc(19, -3, 0.7, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Mouth
+                ctx.strokeStyle = '#2c1a0c';
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(19, -1);
+                ctx.quadraticCurveTo(18, 1.2, 15, 0.8);
+                ctx.stroke();
+                // Tongue
+                ctx.fillStyle = '#e74c3c';
+                ctx.beginPath();
+                ctx.ellipse(16.5, 1.2, 2.2, 1.8, 0, 0, Math.PI);
+                ctx.fill();
+
+                // Eyes
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(9, -7, 3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(14.5, -6.5, 2.8, 0, Math.PI * 2);
+                ctx.fill();
+                // Pupils
+                ctx.fillStyle = '#111';
+                ctx.beginPath();
+                ctx.arc(9.5, -7, 1.6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(15, -6.5, 1.5, 0, Math.PI * 2);
+                ctx.fill();
+                // Eye highlights
+                ctx.fillStyle = 'white';
+                ctx.beginPath();
+                ctx.arc(8.8, -7.6, 0.6, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.arc(14.3, -7.1, 0.5, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Eyebrows
+                ctx.strokeStyle = '#5c2e0b';
+                ctx.lineWidth = 1.5;
+                ctx.beginPath();
+                ctx.moveTo(6.5, -9.5);
+                ctx.lineTo(10, -10.5);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(12.5, -9);
+                ctx.lineTo(16, -9.2);
+                ctx.stroke();
+
+                // Floppy ears
+                const earFlop = Math.sin(frameCount * 0.12) * 1.2;
+                ctx.fillStyle = '#6b3410';
+                ctx.beginPath();
+                ctx.ellipse(5, -10, 5, 10, -0.3, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(15, -9.5, 5, 9, 0.2, 0, Math.PI * 2);
+                ctx.fill();
+                // Inner ear
+                ctx.fillStyle = '#A0522D';
+                ctx.beginPath();
+                ctx.ellipse(4.5, -9.5, 3, 7, -0.2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.beginPath();
+                ctx.ellipse(14.5, -9.2, 3, 6.5, 0.1, 0, Math.PI * 2);
+                ctx.fill();
+
+                // Golden collar
+                ctx.strokeStyle = '#FFD700';
+                ctx.lineWidth = 2.5;
+                ctx.beginPath();
+                ctx.arc(8, -2, 5, 0.3, Math.PI * 1.4);
+                ctx.stroke();
+                // Collar tag
+                ctx.fillStyle = '#FFD700';
+                ctx.beginPath();
+                ctx.arc(5.5, 1.5, 2.2, 0, Math.PI * 2);
+                ctx.fill();
+                ctx.fillStyle = '#FFF';
+                ctx.beginPath();
+                ctx.arc(5.5, 1.5, 1.2, 0, Math.PI * 2);
+                ctx.fill();
+
+                ctx.restore();
+
+                // Score UI
+                ctx.fillStyle = 'white';
+                ctx.font = 'bold 32px "Segoe UI", Arial';
+                ctx.textAlign = 'center';
+                ctx.shadowColor = 'black';
+                ctx.shadowBlur = 4;
+                ctx.fillText(score, W / 2, 70);
+                ctx.shadowBlur = 0;
+
+                ctx.font = '14px "Segoe UI", Arial';
+                ctx.fillStyle = 'rgba(255,255,255,0.8)';
+                ctx.fillText(`Best: ${highScore}`, W / 2, 100);
+
+                if (gameState === 'start') {
+                    ctx.fillStyle = 'white';
+                    ctx.font = 'bold 18px "Segoe UI", Arial';
+                    ctx.fillText('Tap or press Space to start', W / 2, H / 2 - 30);
+                }
+            }
+
+            function drawCloud(x, y, size) {
+                ctx.beginPath();
+                ctx.arc(x, y, size, 0, Math.PI * 2);
+                ctx.arc(x + size, y - size * 0.3, size * 0.8, 0, Math.PI * 2);
+                ctx.arc(x - size, y - size * 0.2, size * 0.7, 0, Math.PI * 2);
+                ctx.fill();
+            }
+
+            function gameLoop() {
+                update();
+                draw();
+                requestAnimationFrame(gameLoop);
+            }
+
+            resetGame();
+            gameLoop();
+        })();
+    </script>
+</body>
+</html>
